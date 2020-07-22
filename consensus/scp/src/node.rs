@@ -12,7 +12,13 @@ use mc_common::{
     logger::{log, Logger},
     LruCache, NodeID,
 };
-use std::{collections::BTreeSet, fmt::Display, time::Duration};
+use mc_crypto_digestible::Digestible;
+use sha3::Sha3_256;
+use std::{
+    collections::{BTreeSet, HashMap},
+    fmt::Display,
+    time::Duration,
+};
 
 /// Max number of pending slots to store.
 const MAX_PENDING_SLOTS: usize = 10;
@@ -137,7 +143,10 @@ pub trait ScpNode<V: Value>: Send {
     ) -> Result<Option<Msg<V>>, String>;
 
     /// Handle incoming message from the network.
-    fn handle(&mut self, msg: &Msg<V>) -> Result<Option<Msg<V>>, String>;
+    fn handle_message(&mut self, msg: &Msg<V>) -> Result<Option<Msg<V>>, String>;
+
+    /// Handle incoming messages from the network.
+    fn handle_messages(&mut self, msgs: Vec<Msg<V>>) -> Result<Vec<Msg<V>>, String>;
 
     /// Get externalized values (or an empty vector) for a given slot index.
     fn get_externalized_values(&self, slot_index: SlotIndex) -> Vec<V>;
@@ -193,51 +202,83 @@ impl<V: Value, ValidationError: Display> ScpNode<V> for Node<V, ValidationError>
         }
     }
 
-    /// Handle incoming message from the network.
-    fn handle(&mut self, msg: &Msg<V>) -> Result<Option<Msg<V>>, String> {
-        if msg.sender_id == self.ID {
+    /// Handle an incoming message from the network.
+    fn handle_message(&mut self, msg: &Msg<V>) -> Result<Option<Msg<V>>, String> {
+        let outgoing_messages = self.handle_messages(vec![msg.clone()])?;
+        Ok(outgoing_messages.get(0).cloned())
+    }
+
+    /// Handle incoming messages from the network.
+    fn handle_messages(&mut self, msgs: Vec<Msg<V>>) -> Result<Vec<Msg<V>>, String> {
+        let (msgs_from_peers, msgs_from_self): (Vec<_>, Vec<_>) =
+            msgs.into_iter().partition(|msg| msg.sender_id != self.ID);
+
+        for msg in msgs_from_self {
             log::error!(
                 self.logger,
                 "node.handle received message from self: {:?}",
                 msg
             );
-            return Ok(None);
         }
 
-        // Log an error if another node Externalizes different values.
-        if let Topic::Externalize(received_externalized_payload) = &msg.topic {
-            if let Some(our_externalized_payload) = self.externalized.get(&msg.slot_index) {
-                if our_externalized_payload.C.X != received_externalized_payload.C.X {
-                    // Another node has externalized a different value for this slot. This could be
-                    // a problem with consensus, or a Byzantine node.
-                    log::error!(
-                        self.logger,
-                        "Node {:?} externalized different values. Ours:{:#?} Theirs:{:#?}",
-                        msg.sender_id,
-                        our_externalized_payload,
-                        received_externalized_payload
-                    );
-
-                    // TODO: return an error.
-                    return Ok(None);
+        for msg in &msgs_from_peers {
+            // Log an error if another node Externalizes different values.
+            if let Topic::Externalize(received_externalized_payload) = &msg.topic {
+                if let Some(our_externalized_payload) = self.externalized.get(&msg.slot_index) {
+                    if our_externalized_payload.C.X != received_externalized_payload.C.X {
+                        log::error!(
+                            self.logger,
+                            "Node {:?} externalized different values. Ours:{:#?} Theirs:{:#?}",
+                            msg.sender_id,
+                            our_externalized_payload,
+                            received_externalized_payload
+                        );
+                    }
                 }
             }
         }
 
-        // Process message using the Slot.
-        let slot = self.get_or_create_pending_slot(msg.slot_index);
-        let messages = vec![msg.clone()];
-        let outbound = slot.handle_messages(messages)?;
+        let (new_msgs, new_msg_hashes): (Vec<Msg<V>>, Vec<_>) = msgs_from_peers
+            .into_iter()
+            .map(|msg| {
+                let tx_hash: Hash = msg.digest_with::<Sha3_256>().into();
+                (msg, tx_hash)
+            })
+            // If we've already seen this message, we don't need to do anything.
+            // We use `get()` instead of `contains()` to update LRU state.
+            .filter(|(_msg, tx_hash)| self.seen_msg_hashes.get(tx_hash).is_none())
+            .unzip();
 
-        match &outbound {
-            None => Ok(None),
-            Some(msg) => {
-                if let Topic::Externalize(ext_payload) = &msg.topic {
-                    self.externalize(msg.slot_index, ext_payload)?;
+        // Update cache.
+        for msg_hash in new_msg_hashes {
+            self.seen_msg_hashes.put(msg_hash, ());
+        }
+
+        // Pass messages to the corresponding slot.
+        let mut slot_index_to_msgs: HashMap<SlotIndex, Vec<Msg<V>>> = Default::default();
+        for msg in new_msgs {
+            slot_index_to_msgs
+                .entry(msg.slot_index)
+                .or_insert_with(Vec::new)
+                .push(msg);
+        }
+
+        let mut outbound_msgs: Vec<_> = Vec::new();
+        for (slot_index, msgs) in slot_index_to_msgs {
+            let slot = self.get_or_create_pending_slot(slot_index);
+            match slot.handle_messages(msgs) {
+                Ok(Some(msg)) => {
+                    if let Topic::Externalize(ext_payload) = &msg.topic {
+                        self.externalize(msg.slot_index, ext_payload)?;
+                    }
+                    outbound_msgs.push(msg)
                 }
-                Ok(outbound)
+                Ok(None) => {}
+                Err(e) => log::error!(self.logger, "{}", e),
             }
         }
+
+        Ok(outbound_msgs)
     }
 
     /// Get externalized values (or an empty vector) for a given slot index.
@@ -331,7 +372,7 @@ mod tests {
 
         // Node 1 handles Node 2's message. It may accept nominate [1000, 2000]
         let msg = node1
-            .handle(&msg)
+            .handle_message(&msg)
             .expect("error handling msg")
             .expect("no msg?");
 
@@ -350,7 +391,7 @@ mod tests {
 
         // Node 2 may "confirm nominate", and issue "vote prepare(<1, [1000,2000]>)
         let msg = node2
-            .handle(&msg)
+            .handle_message(&msg)
             .expect("error handling msg")
             .expect("no msg?");
 
@@ -378,7 +419,7 @@ mod tests {
 
         // Node 1 issues "accept prepare(<1, [1000,2000])
         let msg = node1
-            .handle(&msg)
+            .handle_message(&msg)
             .expect("error handling msg")
             .expect("no msg?");
 
@@ -406,7 +447,7 @@ mod tests {
 
         // Node 2 issues "vote commit"
         let msg = node2
-            .handle(&msg)
+            .handle_message(&msg)
             .expect("error handling msg")
             .expect("no msg?");
 
@@ -428,7 +469,7 @@ mod tests {
 
         // Node 1 issues "accept commit".
         let msg = node1
-            .handle(&msg)
+            .handle_message(&msg)
             .expect("error handling msg")
             .expect("no msg?");
 
@@ -449,7 +490,7 @@ mod tests {
 
         // Node 2 externalizes.
         let msg = node2
-            .handle(&msg)
+            .handle_message(&msg)
             .expect("error handling msg")
             .expect("no msg?");
 
@@ -468,7 +509,7 @@ mod tests {
 
         // Node 1 externalizes.
         let msg = node1
-            .handle(&msg)
+            .handle_message(&msg)
             .expect("error handling msg")
             .expect("no msg?");
 

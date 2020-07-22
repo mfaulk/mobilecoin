@@ -660,6 +660,7 @@ impl<
             // Process compatible messages in batches.
             for chunk in compatible_msgs.chunks(5) {
                 // Omit a message if it references a transaction that cannot be obtained.
+                // TODO: log a warning about omitted messages.
                 let resolved: Vec<_> = chunk
                     .iter()
                     .filter(|(consensus_msg, from_responder_id)| {
@@ -674,85 +675,28 @@ impl<
                         .expect("mutex poisoned")
                         .broadcast_consensus_msg(&from_responder_id, consensus_msg.as_ref());
                 }
-
+                // TODO: only do this for the current slot?
                 let scp_msgs: Vec<Msg<_>> = resolved
                     .into_iter()
                     .map(|(consensus_msg, _)| consensus_msg.scp_msg().clone())
                     .collect();
 
-                // TODO: handle a batch of messages.
-                for scp_msg in &scp_msgs {
-                    match self.scp.handle(scp_msg) {
-                        Ok(outgoing_msg) => {
-                            (self.send_scp_message)(outgoing_msg);
+                match self.scp.handle_messages(scp_msgs.clone()) {
+                    Ok(outgoing_msgs) => {
+                        for msg in outgoing_msgs {
+                            (self.send_scp_message)(Some(msg));
                         }
-                        Err(err) => {
-                            log::error!(
-                                self.logger,
-                                "Failed handling message {:?}: {:?}",
-                                scp_msg,
-                                err
-                            );
-                        }
+                    }
+                    Err(err) => {
+                        log::error!(
+                            self.logger,
+                            "Failed handling messages {:?}: {:?}",
+                            scp_msgs,
+                            err
+                        );
                     }
                 }
             }
-
-            // for (consensus_msg, from_responder_id) in consensus_msgs {
-            //     let (scp_msg, their_prev_block_id) =
-            //         (consensus_msg.scp_msg(), consensus_msg.prev_block_id());
-            //
-            //     if self.prev_block_id != *their_prev_block_id {
-            //         log::warn!(self.logger, "Received message {:?} that refers to an invalid block id {:?} != {:?} (cur_slot = {})",
-            //         scp_msg, their_prev_block_id, self.prev_block_id, self.cur_slot);
-            //     }
-            //
-            //     if !self.fetch_missing_txs(scp_msg, &from_responder_id) {
-            //         continue;
-            //     }
-            //
-            //     // Broadcast this message to the rest of the network.
-            //     self.broadcaster
-            //         .lock()
-            //         .expect("mutex poisoned")
-            //         .broadcast_consensus_msg(&from_responder_id, consensus_msg.as_ref());
-            //
-            //     // Unclear if this helps with anything, so it is disabled for now.
-            //     /*
-            //     // See if this message has any values to incorporate into our pending
-            //     // values. This is safe since we only grab values we think are
-            //     // potentially valid.
-            //     let mut grabbed = 0;
-            //     if let Some(voted_or_accepted_nominated) = scp_msg.votes_or_accepts_nominated() {
-            //         for value in voted_or_accepted_nominated {
-            //             if !self.pending_values_map.contains(&value) && self.tx_cache.validate_tx_by_hash(&value).is_ok() {
-            //                 self.pending_values.insert(value.clone());
-            //                 self.pending_values_map.insert(value, Instant::now()? not sure if this is reasonable);
-            //                 grabbed += 1;
-            //             }
-            //         }
-            //     }
-            //
-            //     if grabbed > 0 {
-            //         log::debug!(self.logger, "Grabbed {} extra pending values from SCP traffic", grabbed);
-            //     }
-            //     */
-            //
-            //     // Pass message to the scp layer.
-            //     match self.scp.handle(scp_msg) {
-            //         Ok(outgoing_msg) => {
-            //             (self.send_scp_message)(outgoing_msg);
-            //         }
-            //         Err(err) => {
-            //             log::error!(
-            //                 self.logger,
-            //                 "Failed handling message {:?}: {:?}",
-            //                 scp_msg,
-            //                 err
-            //             );
-            //         }
-            //     }
-            // }
         }
     }
 
