@@ -318,40 +318,66 @@ impl<V: Value, ValidationError: Display> Slot<V, ValidationError> {
         Ok(self.out_msg())
     }
 
-    /// Handles an incoming message from a peer.
+    /// Handles incoming message from peers.
     ///
     /// Returns:
     /// * Ok(out_msg) - `out_msg` is an outgoing message from this node, if any.
     /// * Err(e) - Something went wrong while processing `msg`.
     pub fn handle(&mut self, msg: &Msg<V>) -> Result<Option<Msg<V>>, String> {
-        // Reject messages for other slots.
-        if self.slot_index != msg.slot_index {
-            return Err("Message is not for the current slot.".to_string());
-        }
+        self.handle_messages(vec![msg.clone()])
+    }
 
-        // Ignore the message if it not higher than a previous message from the same peer.
-        if let Some(existing_msg) = self.M.get(&msg.sender_id) {
-            if msg.topic <= existing_msg.topic {
-                return Ok(self.out_msg());
+    /// Handles incoming messages from peers.
+    ///
+    /// Returns:
+    /// * Ok(out_msg) - `out_msg` is an outgoing message from this node, if any.
+    /// * Err(e) - Something went wrong while processing `msg`.
+    pub fn handle_messages(&mut self, msgs: Vec<Msg<V>>) -> Result<Option<Msg<V>>, String> {
+        // Omit messages for other slots.
+        // TODO: log warnings about msgs_for_other_slots.
+        let (mut msgs_for_slot, _msgs_for_other_slots): (Vec<_>, Vec<_>) = msgs
+            .iter()
+            .partition(|&msg| msg.slot_index == self.slot_index);
+
+        // Set to true if any input message is higher than previous messages from the same sender.
+        let mut has_higher_messages = false;
+
+        // Sort messages in descending order by topic. This lets us process them greedily.
+        msgs_for_slot.sort_by(|a, b| b.topic.cmp(&a.topic));
+
+        'msg_loop: for msg in msgs_for_slot {
+            let is_higher = match self.M.get(&msg.sender_id) {
+                Some(existing_msg) => msg.topic > existing_msg.topic,
+                None => true,
+            };
+
+            if is_higher {
+                // The msg is higher than previous messages from the same sender.
+                if msg.validate().is_ok() {
+                    for value in msg.values() {
+                        if self.is_valid(&value).is_err() {
+                            // Ignore this msg because it contains an invalid value.
+                            // TODO: log a warning.
+                            continue 'msg_loop;
+                        }
+                    }
+
+                    // TODO: Reject messages with incorrectly ordered values.
+
+                    // The msg is valid and should be processed.
+                    self.M.insert(msg.sender_id.clone(), msg.clone());
+                    has_higher_messages = true;
+                }
             }
         }
 
-        // TODO: Reject messages with incorrectly ordered values.
-        // Reject malformed messages.
-        msg.validate()?;
+        if has_higher_messages {
+            if self.phase == Phase::NominatePrepare {
+                self.do_nominate_phase();
+            }
 
-        // Reject messages with invalid values.
-        for value in msg.values() {
-            self.is_valid(&value)?;
+            self.do_ballot_protocol();
         }
-
-        self.M.insert(msg.sender_id.clone(), msg.clone());
-
-        if self.phase == Phase::NominatePrepare {
-            self.do_nominate_phase();
-        }
-
-        self.do_ballot_protocol();
 
         Ok(self.out_msg())
     }

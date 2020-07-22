@@ -226,7 +226,8 @@ impl<V: Value, ValidationError: Display> ScpNode<V> for Node<V, ValidationError>
 
         // Process message using the Slot.
         let slot = self.get_or_create_pending_slot(msg.slot_index);
-        let outbound = slot.handle(msg)?;
+        let messages = vec![msg.clone()];
+        let outbound = slot.handle_messages(messages)?;
 
         match &outbound {
             None => Ok(None),
