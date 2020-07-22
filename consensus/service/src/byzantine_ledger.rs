@@ -554,7 +554,7 @@ impl<
         // Nominate values for current slot.
         self.nominate_pending_values();
 
-        // Process any queues consensus messages.
+        // Process any queued consensus messages.
         self.process_consensus_msgs_for_cur_slot();
 
         // Process SCP timeouts.
@@ -646,63 +646,113 @@ impl<
 
     fn process_consensus_msgs_for_cur_slot(&mut self) {
         if let Some(consensus_msgs) = self.pending_consensus_msgs.remove(&self.cur_slot) {
-            for (consensus_msg, from_responder_id) in consensus_msgs {
-                let (scp_msg, their_prev_block_id) =
-                    (consensus_msg.scp_msg(), consensus_msg.prev_block_id());
+            // Omit "incompatible" messages that refer to a different previous block.
+            let (compatible_msgs, incompatible_msgs): (Vec<_>, Vec<_>) =
+                consensus_msgs.into_iter().partition(|(consensus_msg, _)| {
+                    *consensus_msg.prev_block_id() == self.prev_block_id
+                });
 
-                if self.prev_block_id != *their_prev_block_id {
-                    log::warn!(self.logger, "Received message {:?} that refers to an invalid block id {:?} != {:?} (cur_slot = {})",
-                    scp_msg, their_prev_block_id, self.prev_block_id, self.cur_slot);
+            for (msg, _) in &incompatible_msgs {
+                log::warn!(self.logger, "Received message {:?} that refers to an invalid block id {:?} != {:?} (cur_slot = {})",
+                    msg.scp_msg(), msg.prev_block_id(), self.prev_block_id, self.cur_slot);
+            }
+
+            // Process compatible messages in batches.
+            for chunk in compatible_msgs.chunks(5) {
+                // Omit a message if it references a transaction that cannot be obtained.
+                let resolved: Vec<_> = chunk
+                    .iter()
+                    .filter(|(consensus_msg, from_responder_id)| {
+                        self.fetch_missing_txs(consensus_msg.scp_msg(), from_responder_id)
+                    })
+                    .collect();
+
+                // Broadcast resolved messages.
+                for (consensus_msg, from_responder_id) in &resolved {
+                    self.broadcaster
+                        .lock()
+                        .expect("mutex poisoned")
+                        .broadcast_consensus_msg(&from_responder_id, consensus_msg.as_ref());
                 }
 
-                if !self.fetch_missing_txs(scp_msg, &from_responder_id) {
-                    continue;
-                }
+                let scp_msgs: Vec<Msg<_>> = resolved
+                    .into_iter()
+                    .map(|(consensus_msg, _)| consensus_msg.scp_msg().clone())
+                    .collect();
 
-                // Broadcast this message to the rest of the network.
-                self.broadcaster
-                    .lock()
-                    .expect("mutex poisoned")
-                    .broadcast_consensus_msg(&from_responder_id, consensus_msg.as_ref());
-
-                // Unclear if this helps with anything, so it is disabled for now.
-                /*
-                // See if this message has any values to incorporate into our pending
-                // values. This is safe since we only grab values we think are
-                // potentially valid.
-                let mut grabbed = 0;
-                if let Some(voted_or_accepted_nominated) = scp_msg.votes_or_accepts_nominated() {
-                    for value in voted_or_accepted_nominated {
-                        if !self.pending_values_map.contains(&value) && self.tx_cache.validate_tx_by_hash(&value).is_ok() {
-                            self.pending_values.insert(value.clone());
-                            self.pending_values_map.insert(value, Instant::now()? not sure if this is reasonable);
-                            grabbed += 1;
+                // TODO: handle a batch of messages.
+                for scp_msg in &scp_msgs {
+                    match self.scp.handle(scp_msg) {
+                        Ok(outgoing_msg) => {
+                            (self.send_scp_message)(outgoing_msg);
                         }
-                    }
-                }
-
-                if grabbed > 0 {
-                    log::debug!(self.logger, "Grabbed {} extra pending values from SCP traffic", grabbed);
-                }
-                */
-
-                // Pass message to the scp layer.
-                match self.scp.handle(scp_msg) {
-                    Ok(msg_opt) => {
-                        if let Some(msg) = msg_opt {
-                            (self.send_scp_message)(msg);
+                        Err(err) => {
+                            log::error!(
+                                self.logger,
+                                "Failed handling message {:?}: {:?}",
+                                scp_msg,
+                                err
+                            );
                         }
-                    }
-                    Err(err) => {
-                        log::error!(
-                            self.logger,
-                            "Failed handling message {:?}: {:?}",
-                            scp_msg,
-                            err
-                        );
                     }
                 }
             }
+
+            // for (consensus_msg, from_responder_id) in consensus_msgs {
+            //     let (scp_msg, their_prev_block_id) =
+            //         (consensus_msg.scp_msg(), consensus_msg.prev_block_id());
+            //
+            //     if self.prev_block_id != *their_prev_block_id {
+            //         log::warn!(self.logger, "Received message {:?} that refers to an invalid block id {:?} != {:?} (cur_slot = {})",
+            //         scp_msg, their_prev_block_id, self.prev_block_id, self.cur_slot);
+            //     }
+            //
+            //     if !self.fetch_missing_txs(scp_msg, &from_responder_id) {
+            //         continue;
+            //     }
+            //
+            //     // Broadcast this message to the rest of the network.
+            //     self.broadcaster
+            //         .lock()
+            //         .expect("mutex poisoned")
+            //         .broadcast_consensus_msg(&from_responder_id, consensus_msg.as_ref());
+            //
+            //     // Unclear if this helps with anything, so it is disabled for now.
+            //     /*
+            //     // See if this message has any values to incorporate into our pending
+            //     // values. This is safe since we only grab values we think are
+            //     // potentially valid.
+            //     let mut grabbed = 0;
+            //     if let Some(voted_or_accepted_nominated) = scp_msg.votes_or_accepts_nominated() {
+            //         for value in voted_or_accepted_nominated {
+            //             if !self.pending_values_map.contains(&value) && self.tx_cache.validate_tx_by_hash(&value).is_ok() {
+            //                 self.pending_values.insert(value.clone());
+            //                 self.pending_values_map.insert(value, Instant::now()? not sure if this is reasonable);
+            //                 grabbed += 1;
+            //             }
+            //         }
+            //     }
+            //
+            //     if grabbed > 0 {
+            //         log::debug!(self.logger, "Grabbed {} extra pending values from SCP traffic", grabbed);
+            //     }
+            //     */
+            //
+            //     // Pass message to the scp layer.
+            //     match self.scp.handle(scp_msg) {
+            //         Ok(outgoing_msg) => {
+            //             (self.send_scp_message)(outgoing_msg);
+            //         }
+            //         Err(err) => {
+            //             log::error!(
+            //                 self.logger,
+            //                 "Failed handling message {:?}: {:?}",
+            //                 scp_msg,
+            //                 err
+            //             );
+            //         }
+            //     }
+            // }
         }
     }
 
@@ -818,15 +868,17 @@ impl<
         }
     }
 
+    /// Query a peer for any new transactions referenced by a consensus message.
+    ///
+    /// # Arguments
+    /// * `scp_msg` - A message.
+    /// * `from_responder_id` - The peer who sent the message.
     fn fetch_missing_txs(
         &mut self,
         scp_msg: &Msg<TxHash>,
         from_responder_id: &ResponderId,
     ) -> bool {
-        // Get txs for all the hashes we are missing. This will eventually be replaced with
-        // an enclave call, since the message is going to be encrypted (MC-74).
         let tx_hashes = scp_msg.values();
-
         let mut all_missing_hashes = self.tx_manager.missing_hashes(&tx_hashes);
 
         // Get the connection we'll be working with
