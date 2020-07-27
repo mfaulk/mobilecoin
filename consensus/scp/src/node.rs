@@ -211,11 +211,11 @@ impl<V: Value, ValidationError: Display> ScpNode<V> for Node<V, ValidationError>
         let (msgs_from_peers, msgs_from_self): (Vec<_>, Vec<_>) =
             msgs.into_iter().partition(|msg| msg.sender_id != self.ID);
 
-        for msg in msgs_from_self {
+        if !msgs_from_self.is_empty() {
             log::error!(
                 self.logger,
-                "node.handle received message from self: {:?}",
-                msg
+                "Received {} messages from self.",
+                msgs_from_self.len()
             );
         }
 
@@ -236,7 +236,7 @@ impl<V: Value, ValidationError: Display> ScpNode<V> for Node<V, ValidationError>
             }
         }
 
-        // Pass messages to the corresponding slot.
+        // Group messages by slot index.
         let mut slot_index_to_msgs: HashMap<SlotIndex, Vec<Msg<V>>> = Default::default();
         for msg in msgs_from_peers {
             slot_index_to_msgs
