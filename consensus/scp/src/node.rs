@@ -12,8 +12,6 @@ use mc_common::{
     logger::{log, Logger},
     LruCache, NodeID,
 };
-use mc_crypto_digestible::Digestible;
-use sha3::Sha3_256;
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::Display,
@@ -238,25 +236,9 @@ impl<V: Value, ValidationError: Display> ScpNode<V> for Node<V, ValidationError>
             }
         }
 
-        let (new_msgs, new_msg_hashes): (Vec<Msg<V>>, Vec<_>) = msgs_from_peers
-            .into_iter()
-            .map(|msg| {
-                let tx_hash: Hash = msg.digest_with::<Sha3_256>().into();
-                (msg, tx_hash)
-            })
-            // If we've already seen this message, we don't need to do anything.
-            // We use `get()` instead of `contains()` to update LRU state.
-            .filter(|(_msg, tx_hash)| self.seen_msg_hashes.get(tx_hash).is_none())
-            .unzip();
-
-        // Update cache.
-        for msg_hash in new_msg_hashes {
-            self.seen_msg_hashes.put(msg_hash, ());
-        }
-
         // Pass messages to the corresponding slot.
         let mut slot_index_to_msgs: HashMap<SlotIndex, Vec<Msg<V>>> = Default::default();
-        for msg in new_msgs {
+        for msg in msgs_from_peers {
             slot_index_to_msgs
                 .entry(msg.slot_index)
                 .or_insert_with(Vec::new)

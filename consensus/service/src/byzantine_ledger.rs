@@ -684,7 +684,7 @@ impl<
                 match self.scp.handle_messages(scp_msgs.clone()) {
                     Ok(outgoing_msgs) => {
                         for msg in outgoing_msgs {
-                            (self.send_scp_message)(Some(msg));
+                            (self.send_scp_message)(msg);
                         }
                     }
                     Err(err) => {
