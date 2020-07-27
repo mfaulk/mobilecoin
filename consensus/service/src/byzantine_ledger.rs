@@ -419,7 +419,7 @@ impl<
                 self.ledger_sync_state = LedgerSyncState::MaybeBehind(Instant::now());
             }
 
-            // Sync wervice reports we're behind and we're maybe behind, see if enough time has
+            // Sync service reports we're behind and we're maybe behind, see if enough time has
             // passed to move to IsBehind.
             (LedgerSyncState::MaybeBehind(behind_since), true) => {
                 let is_behind_duration = Instant::now() - behind_since;
@@ -555,7 +555,7 @@ impl<
         self.nominate_pending_values();
 
         // Process any queued consensus messages.
-        self.process_consensus_msgs_for_cur_slot();
+        self.process_consensus_messages();
 
         // Process SCP timeouts.
         for outgoing_msg in self.scp.process_timeouts().into_iter() {
@@ -644,7 +644,8 @@ impl<
         self.need_nominate = false;
     }
 
-    fn process_consensus_msgs_for_cur_slot(&mut self) {
+    /// Process any queued incoming consensus messages.
+    fn process_consensus_messages(&mut self) {
         if let Some(consensus_msgs) = self.pending_consensus_msgs.remove(&self.cur_slot) {
             // Omit "incompatible" messages that refer to a different previous block.
             let (compatible_msgs, incompatible_msgs): (Vec<_>, Vec<_>) =
@@ -660,13 +661,20 @@ impl<
             // Process compatible messages in batches.
             for chunk in compatible_msgs.chunks(5) {
                 // Omit a message if it references a transaction that cannot be obtained.
-                // TODO: log a warning about omitted messages.
-                let resolved: Vec<_> = chunk
-                    .iter()
-                    .filter(|(consensus_msg, from_responder_id)| {
-                        self.fetch_missing_txs(consensus_msg.scp_msg(), from_responder_id)
-                    })
-                    .collect();
+                let (resolved, failed): (Vec<_>, Vec<_>) =
+                    chunk
+                        .iter()
+                        .partition(|(consensus_msg, from_responder_id)| {
+                            self.fetch_missing_txs(consensus_msg.scp_msg(), from_responder_id)
+                        });
+
+                if !failed.is_empty() {
+                    log::warn!(
+                        self.logger,
+                        "Omitted {} message(s) containing transaction(s) that could not be fetched.",
+                        failed.len()
+                    );
+                }
 
                 // Broadcast resolved messages.
                 for (consensus_msg, from_responder_id) in &resolved {
@@ -675,7 +683,7 @@ impl<
                         .expect("mutex poisoned")
                         .broadcast_consensus_msg(&from_responder_id, consensus_msg.as_ref());
                 }
-                // TODO: only do this for the current slot?
+
                 let scp_msgs: Vec<Msg<_>> = resolved
                     .into_iter()
                     .map(|(consensus_msg, _)| consensus_msg.scp_msg().clone())
