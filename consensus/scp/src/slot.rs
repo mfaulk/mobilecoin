@@ -334,10 +334,17 @@ impl<V: Value, ValidationError: Display> Slot<V, ValidationError> {
     /// * Err(e) - Something went wrong while processing `msg`.
     pub fn handle_messages(&mut self, msgs: Vec<Msg<V>>) -> Result<Option<Msg<V>>, String> {
         // Omit messages for other slots.
-        // TODO: log warnings about msgs_for_other_slots.
-        let (mut msgs_for_slot, _msgs_for_other_slots): (Vec<_>, Vec<_>) = msgs
+        let (mut msgs_for_slot, msgs_for_other_slots): (Vec<_>, Vec<_>) = msgs
             .iter()
             .partition(|&msg| msg.slot_index == self.slot_index);
+
+        if !msgs_for_other_slots.is_empty() {
+            log::warn!(
+                self.logger,
+                "Received {} messages for other slots.",
+                msgs_for_other_slots.len(),
+            );
+        }
 
         // Set to true if any input message is higher than previous messages from the same sender.
         let mut has_higher_messages = false;
@@ -357,7 +364,6 @@ impl<V: Value, ValidationError: Display> Slot<V, ValidationError> {
                     for value in msg.values() {
                         if self.is_valid(&value).is_err() {
                             // Ignore this msg because it contains an invalid value.
-                            // TODO: log a warning.
                             continue 'msg_loop;
                         }
                     }
