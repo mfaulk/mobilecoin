@@ -3,9 +3,15 @@
 //! The MobileCoin consensus service.
 
 use crate::{
-    attested_api_service::AttestedApiService, background_work_queue::BackgroundWorkQueue,
-    blockchain_api_service, byzantine_ledger::ByzantineLedger, client_api_service, config::Config,
-    counters, peer_api_service, peer_keepalive::PeerKeepalive, tx_manager::TxManager,
+    attested_api_service::AttestedApiService,
+    background_work_queue::BackgroundWorkQueue,
+    blockchain_api_service,
+    byzantine_ledger::ByzantineLedger,
+    client_api_service,
+    config::Config,
+    counters, peer_api_service,
+    peer_keepalive::PeerKeepalive,
+    tx_manager::{TxManager, TxManagerTrait},
     validators::DefaultTxManagerUntrustedInterfaces,
 };
 use failure::Fail;
@@ -95,7 +101,7 @@ pub struct ConsensusService<E: ConsensusEnclaveProxy, R: RaClient + Send + Sync 
 
     peer_manager: ConnectionManager<PeerConnection<E>>,
     broadcaster: Arc<Mutex<ThreadedBroadcaster>>,
-    tx_manager: TxManager<E, LedgerDB>,
+    tx_manager: Arc<Mutex<Box<dyn TxManagerTrait>>>,
     peer_keepalive: Arc<Mutex<PeerKeepalive>>,
 
     admin_rpc_server: Option<AdminServer>,
@@ -153,7 +159,6 @@ impl<E: ConsensusEnclaveProxy, R: RaClient + Send + Sync + 'static> ConsensusSer
         // Tx Manager
         let tx_manager = TxManager::new(
             enclave.clone(),
-            ledger_db.clone(),
             DefaultTxManagerUntrustedInterfaces::new(ledger_db.clone()),
             logger.clone(),
         );
@@ -181,7 +186,7 @@ impl<E: ConsensusEnclaveProxy, R: RaClient + Send + Sync + 'static> ConsensusSer
 
             peer_manager,
             broadcaster,
-            tx_manager,
+            tx_manager: Arc::new(Mutex::new(Box::new(tx_manager))),
             peer_keepalive,
 
             admin_rpc_server: None,
@@ -543,7 +548,11 @@ impl<E: ConsensusEnclaveProxy, R: RaClient + Send + Sync + 'static> ConsensusSer
             // consensus time.
             if origin_node == &local_node_id || relay_from_nodes.contains(&origin_node.responder_id)
             {
-                if let Some(encrypted_tx) = tx_manager.get_encrypted_tx_by_hash(&tx_hash) {
+                if let Some(encrypted_tx) = tx_manager
+                    .lock()
+                    .expect("Lock poisoned")
+                    .get_encrypted_tx(&tx_hash)
+                {
                     broadcaster
                         .lock()
                         .expect("lock poisoned")

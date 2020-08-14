@@ -6,14 +6,13 @@
 
 use crate::{
     counters,
-    tx_manager::{TxManager, TxManagerError, UntrustedInterfaces},
+    tx_manager::{TxManagerError, TxManagerTrait},
 };
 use mc_common::{
     logger::{log, Logger},
     HashMap, NodeID, ResponderId,
 };
 use mc_connection::{BlockchainConnection, ConnectionManager};
-use mc_consensus_enclave::ConsensusEnclaveProxy;
 use mc_consensus_scp::{
     scp_log::LoggingScpNode, slot::Phase, Msg, Node, QuorumSet, ScpNode, SlotIndex,
 };
@@ -76,16 +75,14 @@ pub struct ByzantineLedger {
 
 impl ByzantineLedger {
     pub fn new<
-        E: ConsensusEnclaveProxy,
         PC: BlockchainConnection + ConsensusConnection + 'static,
         L: Ledger + Sync + 'static,
-        UI: UntrustedInterfaces + Send + Sync + 'static,
     >(
         node_id: NodeID,
         quorum_set: QuorumSet,
         peer_manager: ConnectionManager<PC>,
         ledger: L,
-        tx_manager: TxManager<E, L, UI>,
+        tx_manager: Arc<Mutex<Box<dyn TxManagerTrait>>>,
         broadcaster: Arc<Mutex<ThreadedBroadcaster>>,
         msg_signer_key: Arc<Ed25519Pair>,
         tx_source_urls: Vec<String>,
@@ -99,8 +96,18 @@ impl ByzantineLedger {
         let scp_node = Node::new(
             node_id.clone(),
             quorum_set.clone(),
-            Arc::new(move |tx_hash| tx_manager_validate.validate_tx_by_hash(tx_hash)),
-            Arc::new(move |tx_hashes| tx_manager_combine.combine_txs_by_hash(tx_hashes)),
+            Arc::new(move |tx_hash| {
+                tx_manager_validate
+                    .lock()
+                    .expect("Lock poisoned")
+                    .validate(tx_hash)
+            }),
+            Arc::new(move |tx_hashes| {
+                tx_manager_combine
+                    .lock()
+                    .expect("Lock poisoned")
+                    .combine(tx_hashes)
+            }),
             logger.clone(),
         );
         let wrapped_scp_node: Box<dyn ScpNode<TxHash>> = if let Some(path) = opt_scp_debug_dump_dir
@@ -274,11 +281,9 @@ enum LedgerSyncState {
 }
 
 struct ByzantineLedgerThread<
-    E: ConsensusEnclaveProxy,
     F: Fn(Msg<TxHash>),
     L: Ledger + 'static,
     PC: BlockchainConnection + ConsensusConnection + 'static,
-    UI: UntrustedInterfaces = crate::validators::DefaultTxManagerUntrustedInterfaces<L>,
 > {
     receiver: Receiver<ByzantineLedgerTaskMessage>,
     scp: Box<dyn ScpNode<TxHash>>,
@@ -287,7 +292,7 @@ struct ByzantineLedgerThread<
     send_scp_message: F,
     ledger: L,
     peer_manager: ConnectionManager<PC>,
-    tx_manager: TxManager<E, L, UI>,
+    tx_manager: Arc<Mutex<Box<dyn TxManagerTrait>>>,
     broadcaster: Arc<Mutex<ThreadedBroadcaster>>,
     logger: Logger,
 
@@ -326,12 +331,10 @@ struct ByzantineLedgerThread<
 }
 
 impl<
-        E: ConsensusEnclaveProxy,
         F: Fn(Msg<TxHash>),
         L: Ledger + 'static,
         PC: BlockchainConnection + ConsensusConnection + 'static,
-        UI: UntrustedInterfaces + Send + 'static,
-    > ByzantineLedgerThread<E, F, L, PC, UI>
+    > ByzantineLedgerThread<F, L, PC>
 {
     pub fn start(
         node_id: NodeID,
@@ -343,7 +346,7 @@ impl<
         send_scp_message: F,
         ledger: L,
         peer_manager: ConnectionManager<PC>,
-        tx_manager: TxManager<E, L, UI>,
+        tx_manager: Arc<Mutex<Box<dyn TxManagerTrait>>>,
         broadcaster: Arc<Mutex<ThreadedBroadcaster>>,
         tx_source_urls: Vec<String>,
         logger: Logger,
@@ -520,8 +523,13 @@ impl<
 
                 // Clear any pending values that might no longer be valid.
                 let tx_manager = self.tx_manager.clone();
-                self.pending_values
-                    .retain(|tx_hash| tx_manager.validate_tx_by_hash(tx_hash).is_ok());
+                self.pending_values.retain(|tx_hash| {
+                    tx_manager
+                        .lock()
+                        .expect("Lock poisoned")
+                        .validate(tx_hash)
+                        .is_ok()
+                });
 
                 // Re-construct the BTreeMap with the remaining values, using the old timestamps.
                 let mut new_pending_values_map = BTreeMap::new();
@@ -738,9 +746,16 @@ impl<
 
         // Write to ledger.
         {
+            let num_blocks = self.ledger.num_blocks().expect("num_block failed");
+            let parent_block = self
+                .ledger
+                .get_block(num_blocks - 1)
+                .expect("get_block failed");
             let (block, block_contents, signature) = self
                 .tx_manager
-                .tx_hashes_to_block(&ext_vals)
+                .lock()
+                .expect("Lock poisoned")
+                .tx_hashes_to_block(&ext_vals, &parent_block)
                 .unwrap_or_else(|e| panic!("Failed to build block from {:?}: {:?}", ext_vals, e));
 
             log::info!(
@@ -768,14 +783,24 @@ impl<
 
         // Evacuate transactions that are no longer valid based on their
         // tombstone block.
-        let purged_hashes = self.tx_manager.evacuate_expired(cur_slot);
+        let purged_hashes = self
+            .tx_manager
+            .lock()
+            .expect("Lock poisoned")
+            .remove_expired(cur_slot);
 
-        counters::TX_CACHE_NUM_ENTRIES.set(self.tx_manager.num_entries() as i64);
+        counters::TX_CACHE_NUM_ENTRIES
+            .set(self.tx_manager.lock().expect("Lock poisoned").num_entries() as i64);
 
         // Drop pending values that are no longer considered valid.
         let tx_manager = self.tx_manager.clone();
         self.pending_values.retain(|tx_hash| {
-            !purged_hashes.contains(tx_hash) && tx_manager.validate_tx_by_hash(tx_hash).is_ok()
+            !purged_hashes.contains(tx_hash)
+                && tx_manager
+                    .lock()
+                    .expect("Lock poisoned")
+                    .validate(tx_hash)
+                    .is_ok()
         });
 
         // Re-construct the BTreeMap with the remaining values, using the old timestamps.
@@ -823,7 +848,22 @@ impl<
         // an enclave call, since the message is going to be encrypted (MC-74).
         let tx_hashes = scp_msg.values();
 
-        let mut all_missing_hashes = self.tx_manager.missing_hashes(&tx_hashes);
+        let mut all_missing_hashes: Vec<_> = tx_hashes
+            .into_iter()
+            .filter(|tx_hash| {
+                !self
+                    .tx_manager
+                    .lock()
+                    .expect("Lock poisoned")
+                    .contains(tx_hash)
+            })
+            .collect();
+
+        // let mut all_missing_hashes = self
+        //     .tx_manager
+        //     .lock()
+        //     .expect("Lock poisoned")
+        //     .missing_hashes(&tx_hashes);
 
         // Get the connection we'll be working with
         let conn = match self.peer_manager.conn(from_responder_id) {
@@ -874,7 +914,7 @@ impl<
                     tx_contexts.into_par_iter().for_each_with(
                         (self.tx_manager.clone(), self.logger.clone()),
                         move |(tx_manager, logger), tx_context| {
-                            match tx_manager.insert_proposed_tx(tx_context) {
+                            match tx_manager.lock().expect("Lock poisoned").insert(tx_context) {
                                 Ok(_) | Err(TxManagerError::AlreadyInCache) => {}
                                 Err(err) => {
                                     // Not currently logging the malformed transaction to save a
@@ -949,7 +989,7 @@ impl<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::validators::DefaultTxManagerUntrustedInterfaces;
+    use crate::{tx_manager::TxManager, validators::DefaultTxManagerUntrustedInterfaces};
     use hex;
     use mc_common::logger::test_with_logger;
     use mc_consensus_enclave_mock::ConsensusServiceMockEnclave;
@@ -1059,12 +1099,12 @@ mod tests {
         )));
 
         let enclave = ConsensusServiceMockEnclave::default();
-        let tx_manager = TxManager::new(
-            enclave.clone(),
-            ledger.clone(),
-            DefaultTxManagerUntrustedInterfaces::new(ledger.clone()),
-            logger.clone(),
-        );
+        let tx_manager: Arc<Mutex<Box<dyn TxManagerTrait>>> =
+            Arc::new(Mutex::new(Box::new(TxManager::new(
+                enclave.clone(),
+                DefaultTxManagerUntrustedInterfaces::new(ledger.clone()),
+                logger.clone(),
+            ))));
 
         let byzantine_ledger = ByzantineLedger::new(
             local_node_id.clone(),
@@ -1133,21 +1173,27 @@ mod tests {
         let client_tx_two = transactions.pop().unwrap();
 
         let hash_tx_zero = *tx_manager
-            .insert_proposed_tx(ConsensusServiceMockEnclave::tx_to_tx_context(
+            .lock()
+            .expect("Lock poisoned")
+            .insert(ConsensusServiceMockEnclave::tx_to_tx_context(
                 &client_tx_zero,
             ))
             .unwrap()
             .tx_hash();
 
         let hash_tx_one = *tx_manager
-            .insert_proposed_tx(ConsensusServiceMockEnclave::tx_to_tx_context(
+            .lock()
+            .expect("Lock poisoned")
+            .insert(ConsensusServiceMockEnclave::tx_to_tx_context(
                 &client_tx_one,
             ))
             .unwrap()
             .tx_hash();
 
         let hash_tx_two = *tx_manager
-            .insert_proposed_tx(ConsensusServiceMockEnclave::tx_to_tx_context(
+            .lock()
+            .expect("Lock poisoned")
+            .insert(ConsensusServiceMockEnclave::tx_to_tx_context(
                 &client_tx_two,
             ))
             .unwrap()
