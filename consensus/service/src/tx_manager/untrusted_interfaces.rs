@@ -26,7 +26,15 @@ pub trait UntrustedInterfaces: Send + Sync {
     ) -> TransactionValidationResult<(u64, Vec<TxOutMembershipProof>)>;
 
     /// Checks if a transaction is valid (see definition in validators.rs).
-    fn is_valid(&self, context: Arc<WellFormedTxContext>) -> TransactionValidationResult<()>;
+    ///
+    /// # Arguments
+    /// * `context` - Data exposed by the enclave about a transaction.
+    /// * `num_blocks` - Number of blocks in the ledger that the transaction is validated against.
+    fn is_valid(
+        &self,
+        context: Arc<WellFormedTxContext>,
+        num_blocks: u64,
+    ) -> TransactionValidationResult<()>;
 
     /// Combines a set of "candidate values" into a "composite value".
     /// This assumes all values are well-formed and safe to append to the ledger individually.

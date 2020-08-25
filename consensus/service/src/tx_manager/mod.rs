@@ -85,7 +85,9 @@ impl<E: ConsensusEnclave, UI: UntrustedInterfaces> TxManagerTrait for TxManager<
         {
             let cache = self.lock_cache();
             if let Some(entry) = cache.get(&tx_context.tx_hash) {
-                self.untrusted.is_valid(entry.context().clone())?;
+                // TODO: this shouldn't be here
+                self.untrusted
+                    .is_valid(entry.context().clone(), u64::max_value())?;
                 // The transaction is well-formed and is in the cache.
                 return Ok(*entry.context.tx_hash());
             }
@@ -172,7 +174,7 @@ impl<E: ConsensusEnclave, UI: UntrustedInterfaces> TxManagerTrait for TxManager<
     /// # Arguments
     /// * `tx_hash` - Hash of a transaction.
     /// * `num_blocks` - Number of blocks in the ledger that the transaction is validated against.
-    fn validate(&self, tx_hash: &TxHash, _num_blocks: u64) -> TxManagerResult<()> {
+    fn validate(&self, tx_hash: &TxHash, num_blocks: u64) -> TxManagerResult<()> {
         let context_opt = {
             let cache = self.lock_cache();
             cache.get(tx_hash).map(|entry| entry.context.clone())
@@ -180,7 +182,7 @@ impl<E: ConsensusEnclave, UI: UntrustedInterfaces> TxManagerTrait for TxManager<
 
         if let Some(context) = context_opt {
             let _timer = counters::VALIDATE_TX_TIME.start_timer();
-            self.untrusted.is_valid(context)?;
+            self.untrusted.is_valid(context, num_blocks)?;
             Ok(())
         } else {
             log::error!(

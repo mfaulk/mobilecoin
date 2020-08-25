@@ -87,7 +87,15 @@ impl<L: Ledger + Sync> TxManagerUntrustedInterfaces for DefaultTxManagerUntruste
     }
 
     /// Checks if a transaction is valid (see definition at top of this file).
-    fn is_valid(&self, context: Arc<WellFormedTxContext>) -> TransactionValidationResult<()> {
+    ///
+    /// # Arguments
+    /// * `context` - Data exposed by the enclave about a transaction.
+    /// * `num_blocks` - Number of blocks in the ledger that the transaction is validated against.
+    fn is_valid(
+        &self,
+        context: Arc<WellFormedTxContext>,
+        _num_blocks: u64,
+    ) -> TransactionValidationResult<()> {
         // If the tombstone block has been exceeded, this tx is no longer valid to append to the
         // ledger.
         let current_block_index = self
@@ -561,9 +569,15 @@ mod is_valid_tests {
     use rand::SeedableRng;
     use rand_hc::Hc128Rng;
 
-    fn is_valid(tx: &Tx, ledger: &LedgerDB) -> TransactionValidationResult<()> {
+    /// Returns true if the transaction is valid w.r.t. a ledger state.
+    ///
+    /// # Arguments
+    /// * `tx` - a transaction.
+    /// * `num_blocks` - Number of blocks n the ledger to validate against.
+    /// * `ledger` - A ledger.
+    fn is_valid(tx: &Tx, num_blocks: u64, ledger: &LedgerDB) -> TransactionValidationResult<()> {
         let untrusted = DefaultTxManagerUntrustedInterfaces::new(ledger.clone());
-        untrusted.is_valid(Arc::new(WellFormedTxContext::from(tx)))
+        untrusted.is_valid(Arc::new(WellFormedTxContext::from(tx)), num_blocks)
     }
 
     #[test]
@@ -575,11 +589,11 @@ mod is_valid_tests {
         let recipient = AccountKey::random(&mut rng);
 
         let mut ledger = create_ledger();
-        let n_blocks = 3;
-        initialize_ledger(&mut ledger, n_blocks, &sender, &mut rng);
+        let num_blocks = 3;
+        initialize_ledger(&mut ledger, num_blocks, &sender, &mut rng);
 
         // Choose a TxOut to spend. Only the output of the last block is unspent.
-        let block_contents = ledger.get_block_contents(n_blocks - 1).unwrap();
+        let block_contents = ledger.get_block_contents(num_blocks - 1).unwrap();
         let tx_out = block_contents.outputs[0].clone();
 
         let tx = create_transaction(
@@ -587,12 +601,12 @@ mod is_valid_tests {
             &tx_out,
             &sender,
             &recipient.default_subaddress(),
-            n_blocks,
+            num_blocks,
             &mut rng,
         );
         assert_eq!(
             Err(TransactionValidationError::TombstoneBlockExceeded),
-            is_valid(&tx, &ledger)
+            is_valid(&tx, num_blocks, &ledger)
         );
 
         let tx = create_transaction(
@@ -600,12 +614,12 @@ mod is_valid_tests {
             &tx_out,
             &sender,
             &recipient.default_subaddress(),
-            n_blocks - 1,
+            num_blocks - 1,
             &mut rng,
         );
         assert_eq!(
             Err(TransactionValidationError::TombstoneBlockExceeded),
-            is_valid(&tx, &ledger)
+            is_valid(&tx, num_blocks, &ledger)
         );
 
         let tx = create_transaction(
@@ -618,7 +632,7 @@ mod is_valid_tests {
         );
         assert_eq!(
             Err(TransactionValidationError::TombstoneBlockExceeded),
-            is_valid(&tx, &ledger)
+            is_valid(&tx, num_blocks, &ledger)
         );
     }
 
@@ -631,11 +645,11 @@ mod is_valid_tests {
         let recipient = AccountKey::random(&mut rng);
 
         let mut ledger = create_ledger();
-        let n_blocks = 3;
-        initialize_ledger(&mut ledger, n_blocks, &sender, &mut rng);
+        let num_blocks = 3;
+        initialize_ledger(&mut ledger, num_blocks, &sender, &mut rng);
 
         // Choose a TxOut to spend. Only the output of the last block is unspent.
-        let block_contents = ledger.get_block_contents(n_blocks - 1).unwrap();
+        let block_contents = ledger.get_block_contents(num_blocks - 1).unwrap();
         let tx_out = block_contents.outputs[0].clone();
 
         let mut tx = create_transaction(
@@ -643,14 +657,14 @@ mod is_valid_tests {
             &tx_out,
             &sender,
             &recipient.default_subaddress(),
-            n_blocks + 5,
+            num_blocks + 5,
             &mut rng,
         );
 
         tx.signature.ring_signatures[0].key_image = block_contents.key_images[0].clone();
         assert_eq!(
             Err(TransactionValidationError::ContainsSpentKeyImage),
-            is_valid(&tx, &ledger)
+            is_valid(&tx, num_blocks, &ledger)
         );
     }
 
@@ -663,11 +677,11 @@ mod is_valid_tests {
         let recipient = AccountKey::random(&mut rng);
 
         let mut ledger = create_ledger();
-        let n_blocks = 3;
-        initialize_ledger(&mut ledger, n_blocks, &sender, &mut rng);
+        let num_blocks = 3;
+        initialize_ledger(&mut ledger, num_blocks, &sender, &mut rng);
 
         // Choose a TxOut to spend. Only the output of the last block is unspent.
-        let block_contents = ledger.get_block_contents(n_blocks - 1).unwrap();
+        let block_contents = ledger.get_block_contents(num_blocks - 1).unwrap();
         let tx_out = block_contents.outputs[0].clone();
 
         let mut tx = create_transaction(
@@ -675,14 +689,14 @@ mod is_valid_tests {
             &tx_out,
             &sender,
             &recipient.default_subaddress(),
-            n_blocks + 5,
+            num_blocks + 5,
             &mut rng,
         );
 
         tx.prefix.outputs[0].public_key = block_contents.outputs[0].public_key.clone();
         assert_eq!(
             Err(TransactionValidationError::ContainsExistingOutputPublicKey),
-            is_valid(&tx, &ledger)
+            is_valid(&tx, num_blocks, &ledger)
         );
     }
 }
