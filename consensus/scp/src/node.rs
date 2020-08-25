@@ -99,7 +99,7 @@ impl<V: Value, ValidationError: Display + 'static> Node<V, ValidationError> {
         // Check for invalid values. This should be redundant, but may be helpful during development.
         let mut externalized_invalid_values = false;
         for value in &payload.C.X {
-            if let Err(e) = (self.validity_fn)(value) {
+            if let Err(e) = (self.validity_fn)(value, slot_index - 1) {
                 externalized_invalid_values = true;
                 log::error!(
                     self.logger,

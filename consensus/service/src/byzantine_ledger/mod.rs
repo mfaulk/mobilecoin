@@ -77,7 +77,9 @@ impl ByzantineLedger {
             Node::new(
                 node_id.clone(),
                 quorum_set.clone(),
-                Arc::new(move |tx_hash| tx_manager_validate.validate(tx_hash)),
+                Arc::new(move |tx_hash, num_blocks| {
+                    tx_manager_validate.validate(tx_hash, num_blocks)
+                }),
                 Arc::new(move |tx_hashes| tx_manager_combine.combine(tx_hashes)),
                 logger.clone(),
             )

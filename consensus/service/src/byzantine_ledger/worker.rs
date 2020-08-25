@@ -284,8 +284,9 @@ impl<
 
                 // Clear any pending values that might no longer be valid.
                 let tx_manager = self.tx_manager.clone();
+                let num_blocks = self.cur_slot - 1;
                 self.pending_values
-                    .retain(|tx_hash| tx_manager.validate(tx_hash).is_ok());
+                    .retain(|tx_hash| tx_manager.validate(tx_hash, num_blocks).is_ok());
 
                 // Re-construct the BTreeMap with the remaining values, using the old timestamps.
                 let mut new_pending_values_map = BTreeMap::new();
@@ -544,10 +545,11 @@ impl<
 
         counters::TX_CACHE_NUM_ENTRIES.set(self.tx_manager.num_entries() as i64);
 
-        // Drop pending values that are no longer considered valid.
+        // Drop pending values that are not valid w.r.t. the current ledger.
         let tx_manager = self.tx_manager.clone();
+        let num_blocks = self.cur_slot - 1;
         self.pending_values.retain(|tx_hash| {
-            !purged_hashes.contains(tx_hash) && tx_manager.validate(tx_hash).is_ok()
+            !purged_hashes.contains(tx_hash) && tx_manager.validate(tx_hash, num_blocks).is_ok()
         });
 
         // Re-construct the BTreeMap with the remaining values, using the old timestamps.

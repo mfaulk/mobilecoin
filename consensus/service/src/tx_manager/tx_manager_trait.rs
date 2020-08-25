@@ -20,18 +20,18 @@ pub trait TxManagerTrait {
     /// * `block_index` - Current block index.
     fn remove_expired(&self, block_index: u64) -> HashSet<TxHash>;
 
-    // /// Returns elements of `tx_hashes` that are not inside the cache.
-    // fn missing_hashes<T>(&self, tx_hashes: &T) -> Vec<TxHash>
-    // where
-    //     for<'a> &'a T: IntoIterator<Item = &'a TxHash>;
-
+    /// Returns true if the cache contains the corresponding transaction.
     fn contains(&self, tx_hash: &TxHash) -> bool;
 
     /// Number of cached entries.
     fn num_entries(&self) -> usize;
 
-    /// Validate the transaction corresponding to the given hash against the current ledger.
-    fn validate(&self, tx_hash: &TxHash) -> TxManagerResult<()>;
+    /// Validate a transaction against a particular ledger state.
+    ///
+    /// # Arguments
+    /// * `tx_hash` - Hash of a transaction.
+    /// * `num_blocks` - Number of blocks in the ledger that the transaction is validated against.
+    fn validate(&self, tx_hash: &TxHash, num_blocks: u64) -> TxManagerResult<()>;
 
     /// Combines the transactions that correspond to the given hashes.
     fn combine(&self, tx_hashes: &[TxHash]) -> TxManagerResult<Vec<TxHash>>;

@@ -37,7 +37,7 @@ impl<T> GenericNodeId for T where
 pub type CombineFn<V, E> = Arc<(dyn Fn(&[V]) -> Result<Vec<V>, E> + Sync + Send)>;
 
 /// Application-specific validation of value.
-pub type ValidityFn<V, E> = Arc<(dyn Fn(&V) -> Result<(), E> + Sync + Send)>;
+pub type ValidityFn<V, E> = Arc<(dyn Fn(&V, u64) -> Result<(), E> + Sync + Send)>;
 
 /// The node identifier is used when reasoning about messages in federated voting.
 ///

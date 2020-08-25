@@ -168,7 +168,11 @@ impl<E: ConsensusEnclave, UI: UntrustedInterfaces> TxManagerTrait for TxManager<
     }
 
     /// Validate the transaction corresponding to the given hash against the current ledger.
-    fn validate(&self, tx_hash: &TxHash) -> TxManagerResult<()> {
+    ///
+    /// # Arguments
+    /// * `tx_hash` - Hash of a transaction.
+    /// * `num_blocks` - Number of blocks in the ledger that the transaction is validated against.
+    fn validate(&self, tx_hash: &TxHash, _num_blocks: u64) -> TxManagerResult<()> {
         let context_opt = {
             let cache = self.lock_cache();
             cache.get(tx_hash).map(|entry| entry.context.clone())
@@ -563,7 +567,8 @@ mod tests {
             .unwrap()
             .insert(tx_context.tx_hash.clone(), cache_entry);
 
-        assert!(tx_manager.validate(&tx_context.tx_hash).is_ok());
+        let num_blocks = 14;
+        assert!(tx_manager.validate(&tx_context.tx_hash, num_blocks).is_ok());
     }
 
     #[test_with_logger]
@@ -578,7 +583,8 @@ mod tests {
         let mock_enclave = MockConsensusEnclave::new();
 
         let tx_manager = TxManager::new(mock_enclave, mock_untrusted, logger.clone());
-        match tx_manager.validate(&tx_context.tx_hash) {
+        let num_blocks = 14; // Arbitrary
+        match tx_manager.validate(&tx_context.tx_hash, num_blocks) {
             Err(TxManagerError::NotInCache(_)) => {} // This is expected.
             _ => panic!(),
         }
@@ -614,7 +620,8 @@ mod tests {
             .unwrap()
             .insert(tx_context.tx_hash.clone(), cache_entry);
 
-        match tx_manager.validate(&tx_context.tx_hash) {
+        let num_blocks = 14;
+        match tx_manager.validate(&tx_context.tx_hash, num_blocks) {
             Err(TxManagerError::TransactionValidation(
                 TransactionValidationError::ContainsSpentKeyImage,
             )) => {} // This is expected.

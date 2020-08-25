@@ -388,7 +388,7 @@ impl<V: Value, ValidationError: Display> Slot<V, ValidationError> {
             return Ok(());
         }
 
-        match (self.validity_fn)(value) {
+        match (self.validity_fn)(value, self.slot_index - 1) {
             Ok(()) => {
                 self.valid_values.insert(value.clone());
                 Ok(())

@@ -18,7 +18,10 @@ impl fmt::Display for TransactionValidationError {
 }
 
 /// Returns Ok.
-pub fn trivial_validity_fn<T: Value>(_value: &T) -> Result<(), TransactionValidationError> {
+pub fn trivial_validity_fn<T: Value>(
+    _value: &T,
+    _num_blocks: u64,
+) -> Result<(), TransactionValidationError> {
     Ok(())
 }
 
