@@ -4,7 +4,7 @@
 
 pub use retry::Error as RetryError;
 
-use crate::traits::AttestationError;
+use crate::AttestationError;
 use failure::Fail;
 use grpcio::Error as GrpcError;
 use mc_consensus_api::{consensus_common::ProposeTxResult, ConversionError};

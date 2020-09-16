@@ -2,7 +2,7 @@
 
 //! A connection manager manages a set of connections to peers.
 
-use crate::{sync::SyncConnection, traits::Connection};
+use crate::{sync::SyncConnection, Connection};
 use mc_common::{
     logger::{o, Logger},
     ResponderId,

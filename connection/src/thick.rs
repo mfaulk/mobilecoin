@@ -5,9 +5,7 @@
 
 use crate::{
     error::{Error, Result},
-    traits::{
-        AttestationError, AttestedConnection, BlockchainConnection, Connection, UserTxConnection,
-    },
+    AttestationError, AttestedConnection, BlockchainConnection, Connection, UserTxConnection,
 };
 use aes_gcm::Aes256Gcm;
 use failure::Fail;

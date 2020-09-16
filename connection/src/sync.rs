@@ -3,11 +3,8 @@
 //! A synchronous connection wrapper around an inner (thread-unsafe) connection
 
 use crate::{
-    error::RetryResult,
-    traits::{
-        BlockchainConnection, Connection, RetryableBlockchainConnection, RetryableUserTxConnection,
-        UserTxConnection,
-    },
+    error::RetryResult, BlockchainConnection, Connection, RetryableBlockchainConnection,
+    RetryableUserTxConnection, UserTxConnection,
 };
 use mc_common::logger::Logger;
 use mc_transaction_core::{tx::Tx, Block, BlockID, BlockIndex};

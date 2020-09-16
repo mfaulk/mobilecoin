@@ -2,21 +2,24 @@
 
 //! Connection support
 
+mod attested_connection;
+mod blockchain_connection;
+mod connection_trait;
 mod error;
 mod manager;
 mod sync;
 mod thick;
-mod traits;
+mod user_tx_connection;
 
 pub use self::{
+    attested_connection::{AttestationError, AttestedConnection},
+    blockchain_connection::{BlockchainConnection, RetryableBlockchainConnection},
+    connection_trait::Connection,
     error::{Error, Result, RetryError, RetryResult},
     manager::ConnectionManager,
     sync::SyncConnection,
     thick::{ThickClient, ThickClientAttestationError},
-    traits::{
-        AttestationError, AttestedConnection, BlockchainConnection, Connection,
-        RetryableBlockchainConnection, RetryableUserTxConnection, UserTxConnection,
-    },
+    user_tx_connection::{RetryableUserTxConnection, UserTxConnection},
 };
 
 pub use mc_common::trace_time as _trace_time;
