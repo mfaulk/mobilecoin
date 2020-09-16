@@ -1,6 +1,6 @@
 // Copyright (c) 2018-2020 MobileCoin Inc.
 
-//! Common connection manager implementation
+//! A connection manager manages a set of connections to peers.
 
 use crate::{sync::SyncConnection, traits::Connection};
 use mc_common::{
@@ -9,81 +9,81 @@ use mc_common::{
 };
 use mc_util_uri::ConnectionUri;
 use std::{
-    collections::BTreeMap,
+    collections::HashMap,
     iter::FromIterator,
     sync::{Arc, RwLock, RwLockReadGuard},
 };
 
-struct ConnectionManagerInner<C: Connection> {
-    /// Map of responder id -> retryable connection.
-    id_to_conn: BTreeMap<ResponderId, SyncConnection<C>>,
-}
-
 /// A connection manager manages a list of peers it is connected to.
 pub struct ConnectionManager<C: Connection> {
-    inner: Arc<RwLock<ConnectionManagerInner<C>>>,
+    /// Connections to peers.
+    peer_connections: Arc<RwLock<HashMap<ResponderId, SyncConnection<C>>>>,
 }
 
 impl<C: Connection> Clone for ConnectionManager<C> {
     fn clone(&self) -> Self {
         Self {
-            inner: self.inner.clone(),
+            peer_connections: self.peer_connections.clone(),
         }
     }
 }
 
-/// A collection of connections
 impl<C: Connection> ConnectionManager<C> {
-    pub fn new(conns: Vec<C>, logger: Logger) -> Self {
+    /// Constructor.
+    ///
+    /// # Arguments
+    /// * `connections` - Connections to peers.
+    pub fn new(connections: Vec<C>, logger: Logger) -> Self {
+        let peer_connections = HashMap::from_iter(connections.into_iter().map(|conn| {
+            let responder_id = conn.uri().responder_id().unwrap_or_else(|_| {
+                panic!(
+                    "Could not create responder_id from {:?}",
+                    conn.uri().to_string()
+                )
+            });
+            let name = conn.to_string();
+            let sync_conn = SyncConnection::new(conn, logger.new(o!("mc.peers.peer_name" => name)));
+            (responder_id, sync_conn)
+        }));
+
         Self {
-            inner: Arc::new(RwLock::new(ConnectionManagerInner {
-                id_to_conn: BTreeMap::from_iter(conns.into_iter().map(|conn| {
-                    let name = conn.to_string();
-                    let responder_id = conn.uri().responder_id().unwrap_or_else(|_| {
-                        panic!(
-                            "Could not create responder_id from {:?}",
-                            conn.uri().to_string()
-                        )
-                    });
-                    let sync_conn =
-                        SyncConnection::new(conn, logger.new(o!("mc.peers.peer_name" => name)));
-                    (responder_id, sync_conn)
-                })),
-            })),
+            peer_connections: Arc::new(RwLock::new(peer_connections)),
         }
     }
 
-    fn read(&self) -> RwLockReadGuard<ConnectionManagerInner<C>> {
-        self.inner.read().expect("ConnectionManager lock poisoned")
+    fn read(&self) -> RwLockReadGuard<HashMap<ResponderId, SyncConnection<C>>> {
+        self.peer_connections
+            .read()
+            .expect("ConnectionManager lock poisoned")
     }
 
     /// Retrieve a vector of all the connection URLs owned by this manager.
     pub fn responder_ids(&self) -> Vec<ResponderId> {
-        self.read().id_to_conn.keys().cloned().collect()
+        self.read().keys().cloned().collect()
     }
 
     /// Retrieve an array of synchronous connection supports.
     pub fn conns(&self) -> Vec<SyncConnection<C>> {
-        self.read().id_to_conn.values().cloned().collect()
+        self.read().values().cloned().collect()
     }
 
     /// Retrieve a map of URLs to the connection type.
-    pub fn id_to_conn(&self) -> BTreeMap<ResponderId, SyncConnection<C>> {
-        self.read().id_to_conn.clone()
+    pub fn id_to_conn(&self) -> HashMap<ResponderId, SyncConnection<C>> {
+        self.read().clone()
     }
 
     /// Retrieve a given connection by ResponderId.
     pub fn conn(&self, responder_id: &ResponderId) -> Option<SyncConnection<C>> {
-        self.read().id_to_conn.get(responder_id).cloned()
+        self.read().get(responder_id).cloned()
     }
 
     /// Retrieve a count of the number connections we're aware of.
     pub fn len(&self) -> usize {
-        self.read().id_to_conn.len()
+        self.read().len()
     }
 
     /// Check whether there any connections or not.
     pub fn is_empty(&self) -> bool {
-        self.read().id_to_conn.is_empty()
+        self.read().is_empty()
     }
 }
