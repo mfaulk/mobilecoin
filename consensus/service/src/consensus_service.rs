@@ -18,7 +18,7 @@ use mc_common::{
     logger::{log, Logger},
     NodeID, ResponderId,
 };
-use mc_connection::{Connection, ConnectionManager};
+use mc_connection::{Connection, ConnectionManager, ConnectionManagerTrait};
 use mc_consensus_api::{consensus_client_grpc, consensus_common_grpc, consensus_peer_grpc};
 use mc_consensus_enclave::ConsensusEnclave;
 use mc_crypto_keys::DistinguishedEncoding;

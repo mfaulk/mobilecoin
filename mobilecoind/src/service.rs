@@ -1477,6 +1477,7 @@ mod test {
     };
     use mc_account_keys::{AccountKey, PublicAddress, DEFAULT_SUBADDRESS_INDEX};
     use mc_common::{logger::test_with_logger, HashSet};
+    use mc_connection::ConnectionManagerTrait;
     use mc_crypto_rand::RngCore;
     use mc_transaction_core::{
         constants::{MAX_INPUTS, MINIMUM_FEE, RING_SIZE},

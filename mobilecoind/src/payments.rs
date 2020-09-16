@@ -8,7 +8,9 @@ use mc_common::{
     logger::{log, o, Logger},
     HashMap, HashSet,
 };
-use mc_connection::{ConnectionManager, RetryableUserTxConnection, UserTxConnection};
+use mc_connection::{
+    ConnectionManager, ConnectionManagerTrait, RetryableUserTxConnection, UserTxConnection,
+};
 use mc_crypto_keys::RistrettoPublic;
 use mc_crypto_rand::{CryptoRng, RngCore};
 use mc_ledger_db::{Error as LedgerError, Ledger, LedgerDB};

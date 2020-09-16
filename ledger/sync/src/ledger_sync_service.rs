@@ -13,7 +13,8 @@ use mc_common::{
     ResponderId,
 };
 use mc_connection::{
-    BlockchainConnection, Connection, ConnectionManager, RetryableBlockchainConnection,
+    BlockchainConnection, Connection, ConnectionManager, ConnectionManagerTrait,
+    RetryableBlockchainConnection,
 };
 use mc_ledger_db::Ledger;
 use mc_transaction_core::{
@@ -337,7 +338,7 @@ fn get_blocks<BC: BlockchainConnection + 'static>(
 
     let append_after_block = Arc::new(append_after_block);
 
-    for conn in manager.conns().into_iter() {
+    for conn in manager.connections().into_iter() {
         let thread_results_and_condvar = results_and_condvar.clone();
         let thread_append_after_block = append_after_block.clone();
         let logger = logger.clone();

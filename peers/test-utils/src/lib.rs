@@ -274,7 +274,7 @@ pub fn test_peer_uri(node_id_int: u32) -> PeerUri {
 mod peer_manager_tests {
     use super::*;
     use mc_common::logger::{test_with_logger, Logger};
-    use mc_connection::ConnectionManager;
+    use mc_connection::{ConnectionManager, ConnectionManagerTrait};
     use mc_ledger_db::test_utils::get_mock_ledger;
     use mc_peers::RetryableConsensusConnection;
     use retry::delay::Fibonacci;

@@ -2,7 +2,7 @@
 
 //! Manages a set of connections to peers.
 
-use crate::{sync::SyncConnection, Connection};
+use crate::{sync::SyncConnection, Connection, ConnectionManagerTrait};
 use mc_common::{
     logger::{o, Logger},
     ResponderId,
@@ -57,33 +57,35 @@ impl<C: Connection> ConnectionManager<C> {
             .expect("ConnectionManager lock poisoned")
     }
 
+    /// Retrieve a map of URLs to the connection type.
+    pub fn id_to_connection(&self) -> HashMap<ResponderId, SyncConnection<C>> {
+        self.read().clone()
+    }
+}
+
+impl<C: Connection + 'static> ConnectionManagerTrait<C> for ConnectionManager<C> {
     /// Retrieve a vector of all the connection URLs owned by this manager.
-    pub fn responder_ids(&self) -> Vec<ResponderId> {
+    fn responder_ids(&self) -> Vec<ResponderId> {
         self.read().keys().cloned().collect()
     }
 
     /// Retrieve an array of synchronous connection supports.
-    pub fn connections(&self) -> Vec<SyncConnection<C>> {
+    fn connections(&self) -> Vec<SyncConnection<C>> {
         self.read().values().cloned().collect()
     }
 
-    // /// Retrieve a map of URLs to the connection type.
-    // pub fn id_to_conn(&self) -> HashMap<ResponderId, SyncConnection<C>> {
-    //     self.read().clone()
-    // }
-
     /// Retrieve a given connection by ResponderId.
-    pub fn get_connection(&self, responder_id: &ResponderId) -> Option<SyncConnection<C>> {
+    fn get_connection(&self, responder_id: &ResponderId) -> Option<SyncConnection<C>> {
         self.read().get(responder_id).cloned()
     }
 
     /// Retrieve a count of the number connections we're aware of.
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.read().len()
     }
 
     /// Check whether there any connections or not.
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.read().is_empty()
     }
 }

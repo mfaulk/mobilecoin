@@ -11,7 +11,7 @@ use mc_common::{
     logger::{log, Logger},
     HashMap, ResponderId,
 };
-use mc_connection::ConnectionManager;
+use mc_connection::{ConnectionManager, ConnectionManagerTrait};
 use mc_peers::{ConsensusConnection, RetryableConsensusConnection};
 use retry::Error as RetryError;
 use std::{
@@ -92,7 +92,7 @@ impl PeerKeepalive {
         responder_id_to_last_heard.insert(responder_id, Instant::now());
     }
 
-    fn thread_entrypoint<CC: ConsensusConnection>(
+    fn thread_entrypoint<CC: ConsensusConnection + 'static>(
         conn_manager: ConnectionManager<CC>,
         stop_requested: Arc<AtomicBool>,
         incoming_consensus_msgs_sender: BackgroundWorkQueueSenderFn<IncomingConsensusMsg>,

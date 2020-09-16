@@ -9,7 +9,8 @@ use mc_common::{
     ResponderId,
 };
 use mc_connection::{
-    BlockchainConnection, Connection, ConnectionManager, RetryableBlockchainConnection,
+    BlockchainConnection, Connection, ConnectionManager, ConnectionManagerTrait,
+    RetryableBlockchainConnection,
 };
 use mc_consensus_scp::{
     core_types::Ballot, msg::ExternalizePayload, Msg, QuorumSet, SlotIndex, Topic,
@@ -63,7 +64,7 @@ impl<BC: BlockchainConnection + 'static> PollingNetworkState<BC> {
         type ResultsMap = HashMap<ResponderId, Option<BlockIndex>>;
         let results_and_condvar = Arc::new((Mutex::new(ResultsMap::default()), Condvar::new()));
 
-        for conn in self.manager.conns() {
+        for conn in self.manager.connections() {
             let responder_id = conn
                 .uri()
                 .responder_id()

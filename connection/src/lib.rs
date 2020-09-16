@@ -5,6 +5,7 @@
 mod attested_connection;
 mod blockchain_connection;
 mod connection_manager;
+mod connection_manager_trait;
 mod connection_trait;
 mod error;
 mod sync;
@@ -15,6 +16,7 @@ pub use self::{
     attested_connection::{AttestationError, AttestedConnection},
     blockchain_connection::{BlockchainConnection, RetryableBlockchainConnection},
     connection_manager::ConnectionManager,
+    connection_manager_trait::{ConnectionManagerTrait, MockConnectionManagerTrait},
     connection_trait::Connection,
     error::{Error, Result, RetryError, RetryResult},
     sync::SyncConnection,

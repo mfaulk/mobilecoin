@@ -13,7 +13,7 @@ use mc_common::{
     NodeID, ResponderId,
 };
 use mc_connection::{
-    BlockchainConnection, ConnectionManager,
+    BlockchainConnection, ConnectionManager, ConnectionManagerTrait,
     _retry::{delay::Fibonacci, Error as RetryError},
 };
 use mc_consensus_scp::{slot::Phase, Msg, QuorumSet, ScpNode, SlotIndex};

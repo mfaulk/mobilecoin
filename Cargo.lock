@@ -2278,6 +2278,7 @@ dependencies = [
  "mc-util-host-cert",
  "mc-util-serial",
  "mc-util-uri",
+ "mockall",
  "rand 0.7.3",
  "rand_hc 0.2.0",
  "retry",
