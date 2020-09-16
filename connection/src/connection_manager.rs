@@ -63,14 +63,14 @@ impl<C: Connection> ConnectionManager<C> {
     }
 
     /// Retrieve an array of synchronous connection supports.
-    pub fn conns(&self) -> Vec<SyncConnection<C>> {
+    pub fn connections(&self) -> Vec<SyncConnection<C>> {
         self.read().values().cloned().collect()
     }
 
-    /// Retrieve a map of URLs to the connection type.
-    pub fn id_to_conn(&self) -> HashMap<ResponderId, SyncConnection<C>> {
-        self.read().clone()
-    }
+    // /// Retrieve a map of URLs to the connection type.
+    // pub fn id_to_conn(&self) -> HashMap<ResponderId, SyncConnection<C>> {
+    //     self.read().clone()
+    // }
 
     /// Retrieve a given connection by ResponderId.
     pub fn get_connection(&self, responder_id: &ResponderId) -> Option<SyncConnection<C>> {

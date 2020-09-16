@@ -2943,7 +2943,7 @@ mod test {
             // don't know to which. We enforce the invariant that only one transaction should've been
             // submitted.
             let mut opt_submitted_tx: Option<Tx> = None;
-            for mock_peer in server_conn_manager.conns() {
+            for mock_peer in server_conn_manager.connections() {
                 let inner = mock_peer.read();
                 match (inner.proposed_txs.len(), opt_submitted_tx.clone()) {
                     (0, _) => {
@@ -3180,7 +3180,7 @@ mod test {
         // don't know to which. We enforce the invariant that only one transaction should've been
         // submitted.
         let mut opt_submitted_tx: Option<Tx> = None;
-        for mock_peer in server_conn_manager.conns() {
+        for mock_peer in server_conn_manager.connections() {
             let inner = mock_peer.read();
             match (inner.proposed_txs.len(), opt_submitted_tx.clone()) {
                 (0, _) => {

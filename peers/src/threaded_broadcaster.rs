@@ -65,7 +65,7 @@ impl<RP: RetryPolicy> ThreadedBroadcaster<RP> {
         logger: Logger,
     ) -> Self {
         let peer_threads: Vec<PeerThread> = manager
-            .conns()
+            .connections()
             .into_iter()
             .filter(|conn| {
                 conn.uri()

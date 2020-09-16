@@ -535,7 +535,7 @@ impl<
         // See comment below ("Broadcast to peers") for more details.
         let relay_from_nodes: Vec<ResponderId> = self
             .peer_manager
-            .conns()
+            .connections()
             .iter()
             .filter_map(|conn| {
                 let uri = conn.uri();
