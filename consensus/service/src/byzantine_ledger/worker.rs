@@ -629,7 +629,7 @@ impl<
         }
 
         // Get the connection we'll be working with
-        let conn = match self.peer_manager.conn(from_responder_id) {
+        let conn = match self.peer_manager.get_connection(from_responder_id) {
             Some(conn) => conn,
             None => {
                 log::error!(

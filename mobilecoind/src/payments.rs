@@ -403,7 +403,7 @@ impl<T: UserTxConnection + 'static> TransactionsManager<T> {
         // Try and submit.
         let block_height = self
             .peer_manager
-            .conn(responder_id)
+            .get_connection(responder_id)
             .ok_or(Error::NodeNotFound)?
             .propose_tx(&tx_proposal.tx, empty())
             .map_err(Error::from)?;

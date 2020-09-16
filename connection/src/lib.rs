@@ -4,9 +4,9 @@
 
 mod attested_connection;
 mod blockchain_connection;
+mod connection_manager;
 mod connection_trait;
 mod error;
-mod manager;
 mod sync;
 mod thick;
 mod user_tx_connection;
@@ -14,9 +14,9 @@ mod user_tx_connection;
 pub use self::{
     attested_connection::{AttestationError, AttestedConnection},
     blockchain_connection::{BlockchainConnection, RetryableBlockchainConnection},
+    connection_manager::ConnectionManager,
     connection_trait::Connection,
     error::{Error, Result, RetryError, RetryResult},
-    manager::ConnectionManager,
     sync::SyncConnection,
     thick::{ThickClient, ThickClientAttestationError},
     user_tx_connection::{RetryableUserTxConnection, UserTxConnection},

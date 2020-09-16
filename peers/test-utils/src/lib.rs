@@ -350,7 +350,7 @@ mod peer_manager_tests {
 
         // Perform the actual test.
         let ret = peer_manager
-            .conn(
+            .get_connection(
                 &peer_uri
                     .responder_id()
                     .expect("failed getting responder_id from peer_uri"),
@@ -375,7 +375,7 @@ mod peer_manager_tests {
         peer.set_send_consensus_msg_should_error_count(4);
 
         let ret = peer_manager
-            .conn(
+            .get_connection(
                 &peer_uri
                     .responder_id()
                     .expect("Failed getting responder_id from peer_uri"),

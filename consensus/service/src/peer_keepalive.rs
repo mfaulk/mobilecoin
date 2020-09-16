@@ -139,7 +139,7 @@ impl PeerKeepalive {
                     last_attempt_at.insert(responder_id.clone(), now);
 
                     match conn_manager
-                        .conn(&responder_id)
+                        .get_connection(&responder_id)
                         .ok_or_else(|| RetryError::Internal(format!("{} not found", responder_id)))
                         .and_then(|conn| conn.fetch_latest_msg(std::iter::empty()))
                     {

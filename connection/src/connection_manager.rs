@@ -1,6 +1,6 @@
 // Copyright (c) 2018-2020 MobileCoin Inc.
 
-//! A connection manager manages a set of connections to peers.
+//! Manages a set of connections to peers.
 
 use crate::{sync::SyncConnection, Connection};
 use mc_common::{
@@ -73,7 +73,7 @@ impl<C: Connection> ConnectionManager<C> {
     }
 
     /// Retrieve a given connection by ResponderId.
-    pub fn conn(&self, responder_id: &ResponderId) -> Option<SyncConnection<C>> {
+    pub fn get_connection(&self, responder_id: &ResponderId) -> Option<SyncConnection<C>> {
         self.read().get(responder_id).cloned()
     }
 
