@@ -22,7 +22,7 @@ mc-util-encodings = { path = "../../util/encodings" }
 mc-util-repr-bytes = { path = "../../util/repr-bytes", default-features = false, features = ["alloc"] }
 mc-sgx-core-types-sys = { path = "../core-types-sys" }
 
-base64 = "0.12"
+base64 = "0.13"
 bitflags = "1.2.1"
 displaydoc = { version = "0.2", default-features = false }
 hex = "0.4"

@@ -2500,7 +2500,7 @@ dependencies = [
 name = "mc-consensus-service"
 version = "1.0.1-pre1"
 dependencies = [
- "base64 0.12.3",
+ "base64 0.13.0",
  "chrono",
  "curve25519-dalek",
  "displaydoc",
@@ -3178,7 +3178,7 @@ dependencies = [
 name = "mc-sgx-core-types"
 version = "1.0.1-pre1"
 dependencies = [
- "base64 0.12.3",
+ "base64 0.13.0",
  "bincode",
  "bitflags",
  "displaydoc",
@@ -3255,7 +3255,7 @@ dependencies = [
 name = "mc-sgx-epid-types"
 version = "1.0.1-pre1"
 dependencies = [
- "base64 0.12.3",
+ "base64 0.13.0",
  "bincode",
  "bytes 0.5.4",
  "hex 0.4.2",
@@ -3289,7 +3289,7 @@ dependencies = [
 name = "mc-sgx-ias-types"
 version = "1.0.1-pre1"
 dependencies = [
- "base64 0.12.3",
+ "base64 0.13.0",
  "bitflags",
  "chrono",
  "displaydoc",
@@ -3578,7 +3578,7 @@ dependencies = [
 name = "mc-util-encodings"
 version = "1.0.1-pre1"
 dependencies = [
- "base64 0.12.3",
+ "base64 0.13.0",
  "binascii",
  "displaydoc",
  "hex 0.4.2",
@@ -3618,7 +3618,7 @@ dependencies = [
 name = "mc-util-grpc"
 version = "1.0.1-pre1"
 dependencies = [
- "base64 0.12.3",
+ "base64 0.13.0",
  "cookie 0.14.3",
  "displaydoc",
  "futures 0.3.8",
@@ -3778,7 +3778,7 @@ dependencies = [
 name = "mc-util-uri"
 version = "1.0.1-pre1"
 dependencies = [
- "base64 0.12.3",
+ "base64 0.13.0",
  "displaydoc",
  "ed25519",
  "hex 0.4.2",
